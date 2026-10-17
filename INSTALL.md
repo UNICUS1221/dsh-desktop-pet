@@ -1,4 +1,6 @@
-# 安装教程 · dsh-desktop-pet
+# 安装教程 · dsh-pet-unicus
+
+> 🐟 **由大肥鱼完成的项目喵**
 
 > 本文适用于 **Windows 10/11 + DeepSeek Harness（DSH）桌面版**。
 > 全程不需要编译，插件是纯 JS + PowerShell 的喵。
