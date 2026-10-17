@@ -1,0 +1,4 @@
+{
+  "_说明": "first = 第一次点击弹出的内容（点完才会出随机台词）；占位符 {balance} {today} {peak} {cost} {model} {line} {time}",
+  "first": "DeepSeek 余额   ¥{balance}\n今日已用   ¥{today}\n{peak}"
+}

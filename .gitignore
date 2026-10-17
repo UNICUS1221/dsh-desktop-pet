@@ -1,0 +1,18 @@
+# 运行时产物
+pet/pet.log
+pet/config.json
+pet/*.log
+# 本地验证截图 / 视频帧
+验证-*.png
+全屏*.png
+点击-*.png
+新版-*.png
+重写-*.png
+情绪-*.png
+晃动-*.png
+挤压-*.png
+自动*.png
+视频帧/
+视频帧-挂件/
+node_modules/
+*.zip

@@ -1,0 +1,32 @@
+{
+  "name": "dsh-desktop-pet",
+  "version": "0.4.0",
+  "description": "桌面小鲸鱼（桌宠版 DSH 插件）：余额 / 今日已用 / 情绪词库 / 网络梗 / 余额预警 / 预算提醒 / 用量记录 / ☰ 菜单 / 到点自己开口",
+  "type": "module",
+  "main": "lib/index.js",
+  "license": "MIT",
+  "icon": "./icon.png",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "desktop-pet",
+    "whale",
+    "widget",
+    "selfwake"
+  ],
+  "files": [
+    "lib",
+    "pet",
+    "icon.png",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
