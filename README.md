@@ -1,6 +1,6 @@
 # dsh-pet-unicus · 桌面小鲸鱼（DSH 插件版）
 
-[![version](https://img.shields.io/badge/version-0.4.3-E87AA8)](https://github.com/UNICUS1221/dsh-desktop-pet/releases)
+[![version](https://img.shields.io/badge/version-0.4.4-E87AA8)](https://github.com/UNICUS1221/dsh-desktop-pet/releases)
 [![license](https://img.shields.io/badge/license-MIT-203170)](./LICENSE)
 [![npm](https://img.shields.io/npm/v/dsh-pet-unicus?color=CB3837&label=npm)](https://www.npmjs.com/package/dsh-pet-unicus)
 [![platform](https://img.shields.io/badge/platform-Windows%2010%2F11-3CBE6E)](./INSTALL.md)
@@ -10,7 +10,7 @@
 
 ![预览](./预览.png)
 
-**当前版本：v0.4.3** · 作者：**UNICUS1221**
+**当前版本：v0.4.4** · 作者：**UNICUS1221**
 
 > 🐟 **由大肥鱼完成的项目喵** —— 从需求、调参到桌宠的每一句台词，都是她陪着一版一版磨出来的喵。
 

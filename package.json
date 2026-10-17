@@ -1,6 +1,6 @@
 {
   "name": "dsh-pet-unicus",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "桌面小鲸鱼（桌宠版 DSH 插件）：余额 / 今日已用 / 情绪词库 / 网络梗 / 余额预警 / 预算提醒 / 用量记录 / ☰ 菜单 / 到点自己开口",
   "type": "module",
   "main": "lib/index.js",
