@@ -28,5 +28,11 @@
   },
   "engines": {
     "node": ">=22"
-  }
+  },
+  "author": "UNICUS1221",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/UNICUS1221/dsh-desktop-pet.git"
+  },
+  "homepage": "https://github.com/UNICUS1221/dsh-desktop-pet#readme"
 }
