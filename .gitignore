@@ -2,16 +2,23 @@
 pet/pet.log
 pet/config.json
 pet/*.log
-# 本地验证截图 / 视频帧
+# 本地验证截图 / 视频帧 / 录屏（只允许 预览.png 与 icon.png）
+/*.png
+!/预览.png
+!/icon.png
+动画-*.png
+挂件菜单*.png
+新卡片*.png
+新台词*.png
+新样式-*.png
+桌宠底部*.png
+桌面现状*.png
+测试-*.png
+点后*.png
+颜文字验证*.png
 验证-*.png
-全屏*.png
-点击-*.png
-新版-*.png
-重写-*.png
-情绪-*.png
-晃动-*.png
-挤压-*.png
-自动*.png
+*.mp4
+*.mov
 视频帧/
 视频帧-挂件/
 node_modules/
