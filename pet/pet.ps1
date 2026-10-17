@@ -246,6 +246,9 @@ function Get-RandomLine([string]$section = '日常') {
   return $line
 }
 
+# 启动时就要把词库读进来（否则 allLines 为空，只会回退到"……喵"）
+$script:lines = Get-Lines
+
 # 连点记账：点太快就会从"日常"跳到"撒娇 / 生气 / 炸毛"
 $script:clickTimes = New-Object System.Collections.ArrayList
 function Get-ClickSection {
@@ -579,7 +582,7 @@ function Add-Kao([string]$s) {
     if (-not $s) { return $s }
     # 已经带颜文字就不再加
     if ($s -match '[（(][^)）]{0,6}[ωω・´`▽≧≦ㅂ^][^)）]{0,6}[)）]') { return $s }
-    if ((Get-Random -Maximum 100) -lt 65) { return ($s + ' ' + [string]$script:kao[(Get-Random -Maximum $script:kao.Count)]) }
+    if ((Get-Random -Maximum 100) -lt 85) { return ($s + ' ' + [string]$script:kao[(Get-Random -Maximum $script:kao.Count)]) }
     return $s
   } catch { return $s }
 }
