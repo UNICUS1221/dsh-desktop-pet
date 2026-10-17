@@ -1,7 +1,8 @@
-# dsh-desktop-pet · 桌面小鲸鱼（DSH 插件版）
+# dsh-pet-unicus · 桌面小鲸鱼（DSH 插件版）
 
-[![version](https://img.shields.io/badge/version-0.4.0-E87AA8)](https://github.com/UNICUS1221/dsh-desktop-pet/releases)
+[![version](https://img.shields.io/badge/version-0.4.1-E87AA8)](https://github.com/UNICUS1221/dsh-desktop-pet/releases)
 [![license](https://img.shields.io/badge/license-MIT-203170)](./LICENSE)
+[![npm](https://img.shields.io/npm/v/dsh-pet-unicus?color=CB3837&label=npm)](https://www.npmjs.com/package/dsh-pet-unicus)
 [![platform](https://img.shields.io/badge/platform-Windows%2010%2F11-3CBE6E)](./INSTALL.md)
 
 把 `dsh-whale-widget` 那套「余额 / 今日已用」搬到**桌面上**，做成一只常驻的小鲸鱼喵。
@@ -9,7 +10,7 @@
 
 ![预览](./预览.png)
 
-**当前版本：v0.4.0** · 作者：**UNICUS1221**
+**当前版本：v0.4.1** · 作者：**UNICUS1221**
 
 ## 功能一览
 
@@ -29,9 +30,25 @@
 | 自己开口 | 融合 `dsh-selfwake`：间隔/抖动/安静/未回上限/静默时段/每日上限 |
 | 通知投递 | 外部脚本往 `%TEMP%\dsh-pet-inbox.jsonl` 丢一行 JSON，她就会念出来 |
 
-## 安装
+## 安装（最省事：一个包名搞定喵）
 
-见 [INSTALL.md](./INSTALL.md)（图文步骤 + 排错清单）。
+包已发布到 npm：**`dsh-pet-unicus`**
+（`dsh-desktop-pet` 这个包名在 npm 上已被别人占用，所以改名喵）
+
+1. DSH 左侧 **插件** → 右上角 **「添加插件」**；
+2. 输入：
+   ```
+   dsh-pet-unicus
+   ```
+3. 点安装 → **重启 DSH** → 小鲸鱼上桌喵。
+
+> 也支持直接给仓库地址：`https://github.com/UNICUS1221/dsh-desktop-pet`
+> 手动安装（本地目录 / 改 profile）见 [INSTALL.md](./INSTALL.md) 喵。
+
+## 卸载
+
+插件页里点本插件的「移除」，然后重启 DSH 喵。
+
 
 ## 目录结构
 

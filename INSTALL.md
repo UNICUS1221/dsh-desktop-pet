@@ -44,7 +44,32 @@ Get-ChildItem D:\dsh-plugins\dsh-desktop-pet
 
 ---
 
-## 2. 让 DSH 认识这个插件
+## 2. 方法一（推荐）：用包名装
+
+插件已发布到 npm，名字是 **`dsh-pet-unicus`**喵。
+
+1. DSH 左侧 **插件** → 右上角 **「添加插件」**；
+2. 输入框填：
+   ```
+   dsh-pet-unicus
+   ```
+3. 点 **安装**，等它跑完；
+4. **重启 DSH**，小鲸鱼就上桌了喵。
+
+装完文件在：
+`C:\Users\<你>\.dsh\profiles\desktop\node_modules\dsh-pet-unicus\`
+
+> 想升级：插件页移除再用同样名字装一次即可喵。
+
+## 3. 方法二（可选）：GitHub 地址 / 本地目录
+
+内置「添加插件」同样认这两种写法：
+
+- Git 仓库：`https://github.com/UNICUS1221/dsh-desktop-pet`
+- 本地目录（绝对路径）：`D:\dsh-plugins\dsh-desktop-pet`
+
+## 4. 方法三（手动）：改 profile
+
 
 ### 2.1 改 profile 的 `package.json`
 

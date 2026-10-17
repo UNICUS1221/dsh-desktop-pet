@@ -1,4 +1,4 @@
 # 把桌面小鲸鱼挂进 DSH：宿主侧负责算数据、起进程，脚本侧负责画窗口
 - insert:
     - id: desktop-pet
-      name: dsh-desktop-pet
+      name: dsh-pet-unicus
