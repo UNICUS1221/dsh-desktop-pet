@@ -1,6 +1,6 @@
 {
   "name": "dsh-pet-unicus",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "桌面小鲸鱼（桌宠版 DSH 插件）：余额 / 今日已用 / 情绪词库 / 网络梗 / 余额预警 / 预算提醒 / 用量记录 / ☰ 菜单 / 到点自己开口",
   "type": "module",
   "main": "lib/index.js",
@@ -38,7 +38,7 @@
   "author": "UNICUS1221",
   "repository": {
     "type": "git",
-    "url": "https://github.com/UNICUS1221/dsh-desktop-pet.git"
+    "url": "git+https://github.com/UNICUS1221/dsh-desktop-pet.git"
   },
   "homepage": "https://github.com/UNICUS1221/dsh-desktop-pet#readme"
 }
