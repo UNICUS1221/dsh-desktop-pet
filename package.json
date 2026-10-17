@@ -16,10 +16,16 @@
   ],
   "files": [
     "lib",
-    "pet",
+    "pet/pet.ps1",
+    "pet/start-pet.vbs",
+    "pet/lines.txt",
+    "pet/bubbles.json",
+    "pet/assets",
     "icon.png",
     "cordis.patch.yml",
-    "README.md"
+    "README.md",
+    "INSTALL.md",
+    "LICENSE"
   ],
   "dsh": {
     "bundle": {
