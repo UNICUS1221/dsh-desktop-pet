@@ -1,9 +1,15 @@
 # dsh-desktop-pet · 桌面小鲸鱼（DSH 插件版）
 
+[![version](https://img.shields.io/badge/version-0.4.0-E87AA8)](https://github.com/UNICUS1221/dsh-desktop-pet/releases)
+[![license](https://img.shields.io/badge/license-MIT-203170)](./LICENSE)
+[![platform](https://img.shields.io/badge/platform-Windows%2010%2F11-3CBE6E)](./INSTALL.md)
+
 把 `dsh-whale-widget` 那套「余额 / 今日已用」搬到**桌面上**，做成一只常驻的小鲸鱼喵。
 她有自己的情绪、自己的词库，还会每天自己抓一条网络梗来吐槽喵。
 
-**当前版本：v0.4.0**
+![预览](./预览.png)
+
+**当前版本：v0.4.0** · 作者：**UNICUS1221**
 
 ## 功能一览
 
