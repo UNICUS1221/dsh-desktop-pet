@@ -1,4 +1,4 @@
-# dsh-desktop-pet · 桌宠本体（整份重写 v0.4.0）
+﻿# dsh-desktop-pet · 桌宠本体（整份重写 v0.4.0）
 # 余额卡两行 / 可爱粉泡台词 / 点击从上下压扁（她+泡泡同一曲线）/ 泡泡跟着拖动 /
 # ☰ 悬停菜单 / 任意位置拖动（多显示器）/ 通知投递 / 右键菜单
 $ErrorActionPreference = 'Stop'
@@ -30,6 +30,12 @@ Add-Type -AssemblyName WindowsBase
 Add-Type -AssemblyName System.Windows.Forms
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
+# 版本号从插件根的 package.json 读，升级时不用再改这里的字符串
+$script:ver = '0.0.0'
+try {
+  $pkgFile = Join-Path (Split-Path -Parent $root) 'package.json'
+  if (Test-Path $pkgFile) { $script:ver = [string](([IO.File]::ReadAllText($pkgFile, [Text.Encoding]::UTF8) | ConvertFrom-Json).version) }
+} catch { }
 $assetDir = Join-Path $root 'assets'
 $png = Join-Path $assetDir 'DSniang1.png'
 $clickMp3 = Join-Path $assetDir 'Ya1.mp3'
@@ -414,11 +420,22 @@ $script:searchRoot = $null
 $script:searchInput = $null
 $script:searchPh = $null
 $script:searchExpanded = $false
+$script:lastSearchActivity = $null
 $script:searchHideTimer = New-Object System.Windows.Threading.DispatcherTimer
 $script:searchHideTimer.Interval = [TimeSpan]::FromMilliseconds(420)
 $script:searchHideTimer.add_Tick({
     try {
-      if ($script:searchRoot -and -not $script:searchRoot.IsMouseOver -and -not $script:dragSearchActive) { Collapse-Search }
+      # 输入法候选窗弹出时鼠标会离开搜索框，此时不能收起：焦点还在输入框、或已经打了字就保留
+      $hasFocus = $false
+      try { $hasFocus = [bool]$script:searchInput.IsKeyboardFocusWithin } catch { }
+      $hasText = $false
+      try { $hasText = (([string]$script:searchInput.Text).Trim() -ne '') } catch { }
+      $recent = $false
+      try {
+        if ($script:lastSearchActivity) { $recent = (((Get-Date) - $script:lastSearchActivity).TotalMilliseconds -lt 3000) }
+      } catch { }
+      $keep = $script:searchRoot -and ($script:searchRoot.IsMouseOver -or $script:dragSearchActive -or $hasFocus -or $hasText -or $recent)
+      if (-not $keep) { Collapse-Search }
     } catch { }
     $script:searchHideTimer.Stop()
   })
@@ -444,7 +461,9 @@ function Get-VirtualScreenRect {
       if ($bb.Bottom -gt $b) { $b = $bb.Bottom }
     }
     if ($r -le $l -or $b -le $t) { return $null }
-    return [pscustomobject]@{ Left = $l; Top = $t; Right = $r; Bottom = $b }
+    # Screen.Bounds 是物理像素，窗口坐标是 DIP：统一换算成 DIP 再给调用方比较
+    $f = $script:factor
+    return [pscustomobject]@{ Left = ($l / $f); Top = ($t / $f); Right = ($r / $f); Bottom = ($b / $f) }
   } catch { return $null }
 }
 
@@ -588,7 +607,8 @@ function Do-Search {
   try {
     $q = [string]$script:searchInput.Text
     $url = Get-SearchUrl $q
-    if ($url) { Start-Process $url }
+    if (-not $url) { return }
+    Start-Process $url
     Collapse-Search
   } catch { }
 }
@@ -720,12 +740,16 @@ function Build-Search {
       })
     $tb.Add_KeyDown({
         try {
-          $k = $args[1].Key
-          if ($k -eq [System.Windows.Input.Key]::Enter) { $args[1].Handled = $true; Do-Search }
-          elseif ($k -eq [System.Windows.Input.Key]::Escape) { $args[1].Handled = $true; Collapse-Search }
+          $e = $args[1]
+          $k = $e.Key
+          $script:lastSearchActivity = Get-Date
+          # 输入法正在组合（拼音未上屏）时，回车是给 IME 上屏的，别当搜索、更别收起
+          if ($k -eq [System.Windows.Input.Key]::ImeProcessed) { return }
+          if ($k -eq [System.Windows.Input.Key]::Enter) { $e.Handled = $true; Do-Search }
+          elseif ($k -eq [System.Windows.Input.Key]::Escape) { $e.Handled = $true; Collapse-Search }
         } catch { }
       })
-    $tb.Add_TextChanged({ try { Update-SearchPh } catch { } })
+    $tb.Add_TextChanged({ try { $script:lastSearchActivity = Get-Date; Update-SearchPh } catch { } })
 
     $sw = New-Object System.Windows.Window
     $sw.WindowStyle = [System.Windows.WindowStyle]::None
@@ -768,9 +792,14 @@ function Show-SearchSettings {
     $w.Height = 380
     $w.ResizeMode = [System.Windows.ResizeMode]::NoResize
     $wa2 = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+    # WorkingArea 是物理像素，窗口 Left/Top 是 DIP，先换算再居中
+    $waL = $wa2.Left / $script:factor
+    $waT = $wa2.Top / $script:factor
+    $waW = $wa2.Width / $script:factor
+    $waH = $wa2.Height / $script:factor
     $w.WindowStartupLocation = [System.Windows.WindowStartupLocation]::Manual
-    $w.Left = $wa2.Left + ($wa2.Width - 460) / 2
-    $w.Top = $wa2.Top + ($wa2.Height - 380) / 2
+    $w.Left = $waL + ($waW - 460) / 2
+    $w.Top = $waT + ($waH - 380) / 2
     $w.Topmost = $true
     $w.FontFamily = New-Object System.Windows.Media.FontFamily('Microsoft YaHei UI')
     $w.Background = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromArgb(255, 247, 249, 255))
@@ -1036,7 +1065,7 @@ Add-Sub $mSearch '显示搜索框' {
   Show-Bubble ($(if ($script:cfg.searchEnabled) { '搜索框：开（悬停放大镜展开）' } else { '搜索框：关' })) 5
 }
 Add-Sub $mSearch '搜索引擎设置…' { Show-SearchSettings }
-Add-Mi '关于' { Show-Bubble "大肥鱼 · 桌面小鲸鱼 v0.4.7`n余额 / 今日已用 / 搜索框 / 可爱台词 / 通知" 10 }
+Add-Mi '关于' { Show-Bubble "大肥鱼 · 桌面小鲸鱼 v$($script:ver)`n余额 / 今日已用 / 搜索框 / 可爱台词 / 通知" 10 }
 Add-Mi '退出' {
   try { [IO.File]::Delete($alive) } catch { }
   try { $script:win.Close() } catch { }
@@ -1141,7 +1170,13 @@ function Save-Meme($hot) {
     if ($idx -lt 0) { [void]$arr.Add(''); [void]$arr.Add('## 网络梗'); $idx = $arr.Count - 1 }
     $after = @()
     for ($i = $idx + 1; $i -lt $arr.Count; $i++) { if ($arr[$i].Trim().StartsWith('##')) { break }; if ($arr[$i].Trim() -ne '') { $after += $arr[$i] } }
-    if ($after.Count -ge 12) { $arr.RemoveAt($idx + 1) }        # 先删最旧的
+    if ($after.Count -ge 12) {
+      # 删最旧的一条梗：跳过空行和以 # 开头的说明行，别误删
+      for ($j = $idx + 1; $j -lt $arr.Count; $j++) {
+        $t = ([string]$arr[$j]).Trim()
+        if ($t -ne '' -and -not $t.StartsWith('#')) { $arr.RemoveAt($j); break }
+      }
+    }
     if ($after -notcontains $line) { $arr.Insert(($idx + 1), $line) }
     [IO.File]::WriteAllLines($linesPath, $arr, (New-Object Text.UTF8Encoding($false)))
   } catch { }
@@ -1246,6 +1281,8 @@ $poll.add_Tick({
     try {
       if (Test-Path $inbox) {
         $len = (Get-Item $inbox).Length
+        # 收件箱被宿主轮转（整份换新）后长度会变小，这时要从头读
+        if ($len -lt $script:inboxPos) { $script:inboxPos = 0 }
         if ($len -gt $script:inboxPos) {
           $fs = [IO.File]::Open($inbox, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
           $fs.Position = $script:inboxPos
