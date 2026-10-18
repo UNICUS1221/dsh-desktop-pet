@@ -1,4 +1,4 @@
-﻿# dsh-desktop-pet · 桌宠本体（整份重写 v0.4.0）
+# dsh-desktop-pet · 桌宠本体（整份重写 v0.4.0）
 # 余额卡两行 / 可爱粉泡台词 / 点击从上下压扁（她+泡泡同一曲线）/ 泡泡跟着拖动 /
 # ☰ 悬停菜单 / 任意位置拖动（多显示器）/ 通知投递 / 右键菜单
 $ErrorActionPreference = 'Stop'
@@ -56,6 +56,7 @@ $script:cfg = @{
   menuBtnHide = $false; anchorBottom = $false
   alertBelow = 5; budget = 10; alertDay = ''; alertedBalance = $false; alertedBudget = $false
   autoCardMinutes = 12; memeDay = ''; memeEnabled = $true
+  searchEnabled = $true; searchEngine = 'baidu'; searchTemplate = ''
 }
 try {
   if (Test-Path $cfgPath) {
@@ -405,6 +406,476 @@ function Show-Bubble([string]$text, [int]$seconds = 14, [string]$style = 'normal
   $script:bubbleTimer.Start()
 }
 
+# =====================================================================
+# 搜索框：小鲸鱼旁边一颗放大镜，悬停展开输入框，回车就搜
+# =====================================================================
+$script:searchWin = $null
+$script:searchRoot = $null
+$script:searchInput = $null
+$script:searchPh = $null
+$script:searchExpanded = $false
+$script:searchHideTimer = New-Object System.Windows.Threading.DispatcherTimer
+$script:searchHideTimer.Interval = [TimeSpan]::FromMilliseconds(420)
+$script:searchHideTimer.add_Tick({
+    try {
+      if ($script:searchRoot -and -not $script:searchRoot.IsMouseOver -and -not $script:dragSearchActive) { Collapse-Search }
+    } catch { }
+    $script:searchHideTimer.Stop()
+  })
+
+# ---- 拖动联动：拖鲸鱼时搜索框紧贴跟随；拖搜索框时带着整只鲸鱼走 ----
+$script:followTimer = New-Object System.Windows.Threading.DispatcherTimer
+$script:followTimer.Interval = [TimeSpan]::FromMilliseconds(16)
+$script:followTimer.add_Tick({ try { Position-Search } catch { } })
+
+$script:dragSearchActive = $false
+$script:dragSearchMoved = $false
+$script:dragSearchStart = $null
+$script:dragSearchWin = $null
+
+function Get-VirtualScreenRect {
+  try {
+    $l = [int]::MaxValue; $t = [int]::MaxValue; $r = [int]::MinValue; $b = [int]::MinValue
+    foreach ($sc in [System.Windows.Forms.Screen]::AllScreens) {
+      $bb = $sc.Bounds
+      if ($bb.Left -lt $l) { $l = $bb.Left }
+      if ($bb.Top -lt $t) { $t = $bb.Top }
+      if ($bb.Right -gt $r) { $r = $bb.Right }
+      if ($bb.Bottom -gt $b) { $b = $bb.Bottom }
+    }
+    if ($r -le $l -or $b -le $t) { return $null }
+    return [pscustomobject]@{ Left = $l; Top = $t; Right = $r; Bottom = $b }
+  } catch { return $null }
+}
+
+function Clamp-Win {
+  try {
+    $vr = Get-VirtualScreenRect
+    if (-not $vr) { return }
+    $w = $script:win
+    if ($w.Left -lt $vr.Left) { $w.Left = $vr.Left }
+    if ($w.Top -lt $vr.Top) { $w.Top = $vr.Top }
+    if (($w.Left + $w.Width) -gt $vr.Right) { $w.Left = $vr.Right - $w.Width }
+    if (($w.Top + $w.Height) -gt $vr.Bottom) { $w.Top = $vr.Bottom - $w.Height }
+  } catch { }
+}
+
+$script:dragFollowTimer = New-Object System.Windows.Threading.DispatcherTimer
+$script:dragFollowTimer.Interval = [TimeSpan]::FromMilliseconds(16)
+$script:dragFollowTimer.add_Tick({
+    try {
+      $down = ([System.Windows.Input.Mouse]::LeftButton -eq [System.Windows.Input.MouseButtonState]::Pressed)
+      if (-not $down) {
+        $script:dragFollowTimer.Stop()
+        if ($script:dragSearchActive) {
+          $script:dragSearchActive = $false
+          if ($script:dragSearchMoved) {
+            Clamp-Win
+            Log-It ("[drag] 结束 win=$([int]$script:win.Left),$([int]$script:win.Top) 起点=$([int]$script:dragSearchWin.L),$([int]$script:dragSearchWin.T)")
+            $script:cfg.left = [int]($script:win.Left * $script:factor)
+            $script:cfg.top = [int]($script:win.Top * $script:factor)
+            Save-Cfg
+          } else {
+            Expand-Search
+            try { [void]$script:searchInput.Focus() } catch { }
+          }
+          Position-Search
+        }
+        return
+      }
+      if (-not $script:dragSearchActive -or -not $script:dragSearchStart) { return }
+      $p = [System.Windows.Forms.Cursor]::Position
+      $dx = $p.X - $script:dragSearchStart.X
+      $dy = $p.Y - $script:dragSearchStart.Y
+      if ([Math]::Abs($dx) -gt 4 -or [Math]::Abs($dy) -gt 4) { $script:dragSearchMoved = $true }
+      if ($script:dragSearchMoved) {
+        $script:win.Left = $script:dragSearchWin.L + $dx
+        $script:win.Top = $script:dragSearchWin.T + $dy
+        Position-Search
+      }
+    } catch { }
+  })
+
+function Get-SearchUrl([string]$q) {
+  $t = $q.Trim()
+  if (-not $t) { return '' }
+  # 看起来像网址就直接开
+  if ($t -match '^(https?://|www\.)') { return $t }
+  if ($t -match '^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+([/?#].*)?$') { return ('https://' + $t) }
+  $tpl = 'https://www.baidu.com/s?wd={q}'
+  switch ([string]$script:cfg.searchEngine) {
+    'bing' { $tpl = 'https://www.bing.com/search?q={q}' }
+    'google' { $tpl = 'https://www.google.com/search?q={q}' }
+    'sogou' { $tpl = 'https://www.sogou.com/web?query={q}' }
+    '360' { $tpl = 'https://www.so.com/s?q={q}' }
+    'custom' { if ($script:cfg.searchTemplate) { $tpl = [string]$script:cfg.searchTemplate } }
+  }
+  return $tpl.Replace('{q}', [uri]::EscapeDataString($t))
+}
+
+function Set-SearchWidth([double]$w) {
+  try {
+    if (-not $script:searchWin) { return }
+    $script:searchWin.Width = $w
+    $script:searchRoot.Width = $w
+  } catch { }
+}
+
+function Position-Search {
+  try {
+    if (-not $script:searchWin -or -not $script:searchWin.IsVisible) { return }
+    $vr = Get-VirtualScreenRect
+    $bw = [double]$script:win.Width
+    $bh = [double]$script:win.Height
+    $sw = [double]$script:searchWin.Width
+    $sh = [double]$script:searchWin.Height
+    if ($sh -le 0) { $sh = 36 }
+    $gap = 6
+    $top = $script:win.Top + (($bh - $sh) / 2)
+    $left = $script:win.Left + $bw + $gap
+    if ($vr) {
+      # 鲸鱼在屏幕右半边时，搜索框镜像到鲸鱼左边
+      $whaleMid = $script:win.Left + ($bw / 2)
+      $screenMid = ($vr.Left + $vr.Right) / 2
+      if ($whaleMid -gt $screenMid) { $left = $script:win.Left - $sw - $gap }
+      # 放不下就换到另一边
+      if ($left -lt ($vr.Left + 4)) { $left = $script:win.Left + $bw + $gap }
+      if (($left + $sw) -gt ($vr.Right - 6)) { $left = $script:win.Left - $sw - $gap }
+      if ($left -lt ($vr.Left + 4)) { $left = $vr.Left + 4 }
+      if ($top -lt ($vr.Top + 4)) { $top = $vr.Top + 4 }
+      if (($top + $sh) -gt ($vr.Bottom - 4)) { $top = $vr.Bottom - 4 - $sh }
+    }
+    $script:searchWin.Left = $left
+    $script:searchWin.Top = $top
+  } catch { }
+}
+
+function Update-SearchPh {
+  try {
+    if (-not $script:searchPh) { return }
+    $empty = ([string]$script:searchInput.Text).Trim() -eq ''
+    if ($script:searchExpanded -and $empty) { $script:searchPh.Visibility = [System.Windows.Visibility]::Visible }
+    else { $script:searchPh.Visibility = [System.Windows.Visibility]::Collapsed }
+  } catch { }
+}
+
+function Expand-Search {
+  try {
+    if (-not $script:searchWin -or $script:searchExpanded) { return }
+    $script:searchExpanded = $true
+    $script:searchHideTimer.Stop()
+    Set-SearchWidth 250
+    $script:searchInput.Visibility = [System.Windows.Visibility]::Visible
+    Position-Search
+    Update-SearchPh
+    [void]$script:searchInput.Focus()
+  } catch { }
+}
+
+function Collapse-Search {
+  try {
+    if (-not $script:searchWin) { return }
+    $script:searchExpanded = $false
+    $script:searchInput.Text = ''
+    $script:searchInput.Visibility = [System.Windows.Visibility]::Collapsed
+    Set-SearchWidth 36
+    Update-SearchPh
+    Position-Search
+  } catch { }
+}
+
+function Do-Search {
+  try {
+    $q = [string]$script:searchInput.Text
+    $url = Get-SearchUrl $q
+    if ($url) { Start-Process $url }
+    Collapse-Search
+  } catch { }
+}
+
+function Show-Search {
+  try {
+    if (-not $script:searchWin) { return }
+    Collapse-Search
+    $script:searchWin.Show()
+    Position-Search
+  } catch { }
+}
+
+function Hide-Search {
+  try { if ($script:searchWin) { $script:searchWin.Hide() } } catch { }
+}
+
+function Update-SearchVisibility {
+  try {
+    if ($script:cfg.searchEnabled) { Show-Search } else { Hide-Search }
+  } catch { }
+}
+
+function Build-Search {
+  try {
+    $accent = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromArgb(255, 32, 49, 112))
+    $muted = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromArgb(255, 140, 150, 175))
+
+    $root = New-Object System.Windows.Controls.Border
+    $root.CornerRadius = New-Object System.Windows.CornerRadius(18)
+    $root.Background = [System.Windows.Media.Brushes]::White
+    $root.BorderBrush = $accent
+    $root.BorderThickness = New-Object System.Windows.Thickness(2)
+    $root.Width = 36
+    $root.Height = 36
+    $root.ToolTip = '点我搜索喵'
+
+    $grid = New-Object System.Windows.Controls.Grid
+    $c0 = New-Object System.Windows.Controls.ColumnDefinition
+    $c0.Width = [System.Windows.GridLength]::Auto
+    $c1 = New-Object System.Windows.Controls.ColumnDefinition
+    $c1.Width = [System.Windows.GridLength]::new(1, [System.Windows.GridUnitType]::Star)
+    [void]$grid.ColumnDefinitions.Add($c0)
+    [void]$grid.ColumnDefinitions.Add($c1)
+
+    # 放大镜用矢量画，避免字体基线导致偏上
+    $icon = New-Object System.Windows.Controls.Canvas
+    $icon.Width = 32
+    $icon.Height = 32
+    $icon.VerticalAlignment = 'Center'
+
+    $circle = New-Object System.Windows.Shapes.Ellipse
+    $circle.Width = 13
+    $circle.Height = 13
+    $circle.Stroke = $accent
+    $circle.StrokeThickness = 2
+    $circle.Fill = [System.Windows.Media.Brushes]::Transparent
+    [System.Windows.Controls.Canvas]::SetLeft($circle, 7.5)
+    [System.Windows.Controls.Canvas]::SetTop($circle, 7.5)
+
+    $handle = New-Object System.Windows.Shapes.Line
+    $handle.X1 = 18
+    $handle.Y1 = 18
+    $handle.X2 = 24
+    $handle.Y2 = 24
+    $handle.Stroke = $accent
+    $handle.StrokeThickness = 2.2
+    $handle.StrokeStartLineCap = 'Round'
+    $handle.StrokeEndLineCap = 'Round'
+
+    [void]$icon.Children.Add($circle)
+    [void]$icon.Children.Add($handle)
+    [System.Windows.Controls.Grid]::SetColumn($icon, 0)
+    [void]$grid.Children.Add($icon)
+
+    $tb = New-Object System.Windows.Controls.TextBox
+    $tb.BorderThickness = New-Object System.Windows.Thickness(0)
+    $tb.Background = [System.Windows.Media.Brushes]::Transparent
+    $tb.Foreground = $accent
+    $tb.FontFamily = New-Object System.Windows.Media.FontFamily('Microsoft YaHei UI')
+    $tb.FontSize = 13
+    $tb.VerticalContentAlignment = 'Center'
+    $tb.Padding = New-Object System.Windows.Thickness(0, 0, 4, 0)
+    $tb.Visibility = [System.Windows.Visibility]::Collapsed
+    [System.Windows.Controls.Grid]::SetColumn($tb, 1)
+    [void]$grid.Children.Add($tb)
+
+    $ph = New-Object System.Windows.Controls.TextBlock
+    $ph.Text = '搜索或输入网址，回车喵'
+    $ph.Foreground = $muted
+    $ph.FontFamily = New-Object System.Windows.Media.FontFamily('Microsoft YaHei UI')
+    $ph.FontSize = 12
+    $ph.VerticalAlignment = 'Center'
+    $ph.Margin = New-Object System.Windows.Thickness(4, 0, 0, 0)
+    $ph.IsHitTestVisible = $false
+    $ph.Visibility = [System.Windows.Visibility]::Collapsed
+    [System.Windows.Controls.Grid]::SetColumn($ph, 1)
+    [void]$grid.Children.Add($ph)
+
+    $root.Child = $grid
+    $root.Add_MouseEnter({ try { Expand-Search } catch { } })
+    $root.Add_PreviewMouseLeftButtonDown({
+        try {
+          $p0 = [System.Windows.Forms.Cursor]::Position
+          $script:dragSearchActive = $true
+          $script:dragSearchMoved = $false
+          try { $script:win.DragMove() } catch { }
+          $script:dragSearchActive = $false
+          $p1 = [System.Windows.Forms.Cursor]::Position
+          $moved = ([Math]::Abs($p1.X - $p0.X) + [Math]::Abs($p1.Y - $p0.Y))
+          if ($moved -lt 6) {
+            Expand-Search
+            try { [void]$script:searchInput.Focus() } catch { }
+          } else {
+            Clamp-Win
+            Log-It ("[drag] 搜索框拖动结束 win=$([int]$script:win.Left),$([int]$script:win.Top)")
+            $script:cfg.left = [int]($script:win.Left * $script:factor)
+            $script:cfg.top = [int]($script:win.Top * $script:factor)
+            Save-Cfg
+          }
+          Position-Search
+        } catch { }
+      })
+    $root.Add_MouseLeave({
+        try {
+          $script:searchHideTimer.Stop()
+          $script:searchHideTimer.Start()
+        } catch { }
+      })
+    $tb.Add_KeyDown({
+        try {
+          $k = $args[1].Key
+          if ($k -eq [System.Windows.Input.Key]::Enter) { $args[1].Handled = $true; Do-Search }
+          elseif ($k -eq [System.Windows.Input.Key]::Escape) { $args[1].Handled = $true; Collapse-Search }
+        } catch { }
+      })
+    $tb.Add_TextChanged({ try { Update-SearchPh } catch { } })
+
+    $sw = New-Object System.Windows.Window
+    $sw.WindowStyle = [System.Windows.WindowStyle]::None
+    $sw.AllowsTransparency = $true
+    $sw.Background = [System.Windows.Media.Brushes]::Transparent
+    $sw.Topmost = $true
+    $sw.ShowInTaskbar = $false
+    $sw.ShowActivated = $false
+    $sw.ResizeMode = [System.Windows.ResizeMode]::NoResize
+    $sw.WindowStartupLocation = [System.Windows.WindowStartupLocation]::Manual
+    $sw.Width = 36
+    $sw.Height = 36
+    $sw.Content = $root
+
+    $script:searchWin = $sw
+    $script:searchRoot = $root
+    $script:searchInput = $tb
+    $script:searchPh = $ph
+
+    if ($script:cfg.searchEnabled) { Show-Search }
+    Log-It '搜索框已就绪'
+  } catch {
+    Log-It ('搜索框创建失败：' + $_.Exception.Message)
+  }
+}
+
+# ---- 搜索设置窗口：换搜索引擎 / 开关 ----
+function Show-SearchSettings {
+  Log-It '打开搜索设置窗口…'
+  try {
+    Collapse-Search
+    if ($script:cfgWin) { try { $script:cfgWin.Close() } catch { } $script:cfgWin = $null }
+
+    $accent = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromArgb(255, 32, 49, 112))
+    $muted = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromArgb(255, 120, 132, 160))
+
+    $w = New-Object System.Windows.Window
+    $w.Title = '小鲸鱼 · 搜索设置'
+    $w.Width = 460
+    $w.Height = 380
+    $w.ResizeMode = [System.Windows.ResizeMode]::NoResize
+    $wa2 = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+    $w.WindowStartupLocation = [System.Windows.WindowStartupLocation]::Manual
+    $w.Left = $wa2.Left + ($wa2.Width - 460) / 2
+    $w.Top = $wa2.Top + ($wa2.Height - 380) / 2
+    $w.Topmost = $true
+    $w.FontFamily = New-Object System.Windows.Media.FontFamily('Microsoft YaHei UI')
+    $w.Background = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromArgb(255, 247, 249, 255))
+
+    $sp = New-Object System.Windows.Controls.StackPanel
+    $sp.Margin = New-Object System.Windows.Thickness(22, 18, 22, 18)
+
+    $title = New-Object System.Windows.Controls.TextBlock
+    $title.Text = '小鲸鱼搜索框'
+    $title.FontSize = 17
+    $title.FontWeight = 'Bold'
+    $title.Foreground = $accent
+    $title.Margin = New-Object System.Windows.Thickness(0, 0, 0, 6)
+    [void]$sp.Children.Add($title)
+
+    $desc = New-Object System.Windows.Controls.TextBlock
+    $desc.Text = '鼠标移到小鲸鱼旁边的放大镜上会展开输入框；回车用下面选的引擎搜索。输入网址会直接打开。'
+    $desc.TextWrapping = 'Wrap'
+    $desc.Foreground = $muted
+    $desc.FontSize = 12
+    $desc.Margin = New-Object System.Windows.Thickness(0, 0, 0, 14)
+    [void]$sp.Children.Add($desc)
+
+    $chk = New-Object System.Windows.Controls.CheckBox
+    $chk.Content = '启用搜索框'
+    $chk.IsChecked = [bool]$script:cfg.searchEnabled
+    $chk.Margin = New-Object System.Windows.Thickness(0, 0, 0, 14)
+    [void]$sp.Children.Add($chk)
+
+    $lbl1 = New-Object System.Windows.Controls.TextBlock
+    $lbl1.Text = '搜索引擎'
+    $lbl1.Foreground = $accent
+    $lbl1.Margin = New-Object System.Windows.Thickness(0, 0, 0, 4)
+    [void]$sp.Children.Add($lbl1)
+
+    $cb = New-Object System.Windows.Controls.ComboBox
+    $cb.Height = 30
+    $cb.Margin = New-Object System.Windows.Thickness(0, 0, 0, 12)
+    foreach ($n in @('百度', '必应 Bing', 'Google', '搜狗', '360 搜索', '自定义')) { [void]$cb.Items.Add($n) }
+    $names = @('baidu', 'bing', 'google', 'sogou', '360', 'custom')
+    $i = [Array]::IndexOf($names, [string]$script:cfg.searchEngine)
+    $cb.SelectedIndex = if ($i -ge 0) { $i } else { 0 }
+    [void]$sp.Children.Add($cb)
+
+    $lbl2 = New-Object System.Windows.Controls.TextBlock
+    $lbl2.Text = '自定义地址（用 {q} 代表关键词，仅选「自定义」时生效）'
+    $lbl2.Foreground = $accent
+    $lbl2.Margin = New-Object System.Windows.Thickness(0, 0, 0, 4)
+    [void]$sp.Children.Add($lbl2)
+
+    $tmpl = New-Object System.Windows.Controls.TextBox
+    $tmpl.Height = 30
+    $tmpl.Text = [string]$script:cfg.searchTemplate
+    $tmpl.IsEnabled = ($cb.SelectedIndex -eq 5)
+    $tmpl.Margin = New-Object System.Windows.Thickness(0, 0, 0, 8)
+    [void]$sp.Children.Add($tmpl)
+
+    $bar = New-Object System.Windows.Controls.StackPanel
+    $bar.Orientation = 'Horizontal'
+    $bar.HorizontalAlignment = 'Right'
+    $bar.Margin = New-Object System.Windows.Thickness(0, 10, 0, 0)
+
+    $btnSave = New-Object System.Windows.Controls.Button
+    $btnSave.Content = '保存'
+    $btnSave.Width = 84
+    $btnSave.Height = 30
+    $btnSave.Margin = New-Object System.Windows.Thickness(0, 0, 8, 0)
+    $btnCancel = New-Object System.Windows.Controls.Button
+    $btnCancel.Content = '取消'
+    $btnCancel.Width = 84
+    $btnCancel.Height = 30
+    [void]$bar.Children.Add($btnSave)
+    [void]$bar.Children.Add($btnCancel)
+    [void]$sp.Children.Add($bar)
+
+    $w.Content = $sp
+    $script:cfgWin = $w
+    $script:cfgChk = $chk
+    $script:cfgCombo = $cb
+    $script:cfgTmpl = $tmpl
+
+    $cb.Add_SelectionChanged({ try { $script:cfgTmpl.IsEnabled = ($script:cfgCombo.SelectedIndex -eq 5) } catch { } })
+    $btnSave.Add_Click({
+        try {
+          $script:cfg.searchEnabled = [bool]$script:cfgChk.IsChecked
+          $all = @('baidu', 'bing', 'google', 'sogou', '360', 'custom')
+          $idx = [int]$script:cfgCombo.SelectedIndex
+          if ($idx -lt 0 -or $idx -ge $all.Count) { $idx = 0 }
+          $script:cfg.searchEngine = $all[$idx]
+          $script:cfg.searchTemplate = [string]$script:cfgTmpl.Text
+          Save-Cfg
+          Update-SearchVisibility
+          $script:cfgWin.Close()
+          Show-Bubble '搜索设置已保存喵' 5
+        } catch { }
+      })
+    $btnCancel.Add_Click({ try { $script:cfgWin.Close() } catch { } })
+
+    $w.Show()
+    Log-It '搜索设置窗口已显示'
+  } catch {
+    Log-It ('搜索设置窗口失败：' + $_.Exception.Message)
+  }
+}
+
 function Show-Card {
   $s = $script:live
   $bal = if ($s -and $null -ne $s.balance) { '{0:N2}' -f [double]$s.balance } else { '—' }
@@ -427,7 +898,8 @@ function Show-Click-Bubble {
 $img.Add_MouseLeftButtonDown({
     try {
       $p0 = [System.Windows.Forms.Cursor]::Position
-      $script:win.DragMove()
+      $script:followTimer.Start()
+      try { $script:win.DragMove() } finally { $script:followTimer.Stop(); Position-Search }
       $p1 = [System.Windows.Forms.Cursor]::Position
       $moved = ([Math]::Abs($p1.X - $p0.X) + [Math]::Abs($p1.Y - $p0.Y))
       if ($moved -lt 6) {
@@ -448,6 +920,7 @@ $img.Add_MouseLeftButtonDown({
           if (($script:win.Left + $wD2) -gt $vs2.Right) { $script:win.Left = $vs2.Right - $wD2 }
           if (($script:win.Top + $hD2) -gt $vs2.Bottom) { $script:win.Top = $vs2.Bottom - $hD2 }
         } catch { }
+        Clamp-Win
         $script:cfg.left = [int]($script:win.Left * $script:factor)
         $script:cfg.top = [int]($script:win.Top * $script:factor)
         Save-Cfg
@@ -478,6 +951,7 @@ function Set-Scale([double]$v) {
   $script:cfg.left = [int]($script:win.Left * $script:factor)
   $script:cfg.top = [int]($script:win.Top * $script:factor)
   Save-Cfg
+  Position-Search
 }
 
 $cm = New-Object System.Windows.Controls.ContextMenu
@@ -554,7 +1028,15 @@ Add-Mi '隐藏菜单按钮' {
   Update-Btn
   Show-Bubble ($(if ($script:cfg.menuBtnHide) { '菜单按钮藏起来了喵（右键也能开）' } else { '菜单按钮回来了喵' })) 5
 }
-Add-Mi '关于' { Show-Bubble "大肥鱼 · 桌面小鲸鱼 v0.4.0`n余额 / 今日已用 / 可爱台词 / 通知" 10 }
+$mSearch = Add-Mi '搜索'
+Add-Sub $mSearch '显示搜索框' {
+  $script:cfg.searchEnabled = -not $script:cfg.searchEnabled
+  Save-Cfg
+  Update-SearchVisibility
+  Show-Bubble ($(if ($script:cfg.searchEnabled) { '搜索框：开（悬停放大镜展开）' } else { '搜索框：关' })) 5
+}
+Add-Sub $mSearch '搜索引擎设置…' { Show-SearchSettings }
+Add-Mi '关于' { Show-Bubble "大肥鱼 · 桌面小鲸鱼 v0.4.7`n余额 / 今日已用 / 搜索框 / 可爱台词 / 通知" 10 }
 Add-Mi '退出' {
   try { [IO.File]::Delete($alive) } catch { }
   try { $script:win.Close() } catch { }
@@ -588,7 +1070,7 @@ $cm.Add_Closed({ try { Update-Btn } catch { } })
 $btnTimer.add_Tick({ Update-Btn })
 $btnTimer.Start()
 
-$win.Add_LocationChanged({ Position-Bubble })
+$win.Add_LocationChanged({ Position-Bubble; Position-Search })
 
 # ---- 颜文字：说话时随机加一个（余额卡不加）----
 $script:kao = @('喵～', '(ฅ''ω''ฅ)', '(๑•̀ㅂ•́)و✧', '(´･ω･`)', '(๑´ω`๑)', '(ฅ´ω`ฅ)', '(=^･ω･^=)', '( ´ ▽ ` )', '(๑•́ ₃ •̀๑)', '(｡•́︿•̀｡)', '(๑>؂<๑)', 'ヾ(≧▽≦*)o')
@@ -755,6 +1237,7 @@ $poll.add_Tick({
         elseif ($cmd -eq 'cute') { Show-Bubble (Get-RandomLine) 14 'cute' }
         elseif ($cmd -eq 'press') { Q-Squash $script:imgHost }
         elseif ($cmd -eq 'usage') { Show-Usage }
+        elseif ($cmd -eq 'search-settings') { $script:win.Dispatcher.BeginInvoke([Action]{ Show-SearchSettings }) | Out-Null }
         elseif ($cmd -match '^scale\s+(\d+)$') { Set-Scale ([double]$Matches[1]) }
         elseif ($cmd -ne '') { Show-Bubble $cmd 14 }
       }
@@ -808,6 +1291,7 @@ $app = New-Object System.Windows.Application
 $app.ShutdownMode = [System.Windows.ShutdownMode]::OnExplicitShutdown
 $app.add_DispatcherUnhandledException({ try { $args[1].Handled = $true } catch { } })
 $win.Show()
+Build-Search
 if ($script:cfg.flipped) { Set-Flip $true }
 try { [IO.File]::WriteAllText($alive, [DateTime]::Now.ToString('o')) } catch { }
 Log-It ("启动 pid=$PID dpi=$($script:dpi) factor=$($script:factor) 位置=$([int]$win.Left),$([int]$win.Top) 尺寸=$([int]$win.Width)")
