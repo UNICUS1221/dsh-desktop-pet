@@ -67,7 +67,14 @@ function Save-Cfg {
   try { [IO.File]::WriteAllText($cfgPath, ($script:cfg | ConvertTo-Json -Compress), (New-Object Text.UTF8Encoding($false))) } catch { }
 }
 
-function Get-Wa { try { return [System.Windows.SystemParameters]::WorkArea } catch { return (New-Object System.Windows.Rect(0, 0, 1920, 1080)) } }
+function Get-Wa {
+  # WorkArea 给的是物理像素，窗口坐标是 DIP → 除 factor；顺便保证至少是个 DIP 量级的值
+  try {
+    $a = [System.Windows.SystemParameters]::WorkArea
+    $f = $script:factor
+    return (New-Object System.Windows.Rect(($a.Left / $f), ($a.Top / $f), ($a.Width / $f), ($a.Height / $f)))
+  } catch { return (New-Object System.Windows.Rect(0, 0, 1920, 1080)) }
+}
 function Get-VScreen {
   try {
     $l = [int]::MaxValue; $t = [int]::MaxValue; $r = [int]::MinValue; $b = [int]::MinValue
@@ -146,6 +153,14 @@ if ($win.Left -lt $vs.Left) { $win.Left = $vs.Left }
 if ($win.Top -lt $vs.Top) { $win.Top = $vs.Top }
 if (($win.Left + $wD) -gt $vs.Right) { $win.Left = $vs.Right - $wD }
 if (($win.Top + $hD) -gt $vs.Bottom) { $win.Top = $vs.Bottom - $hD }
+# 兜底：万一 vs 取到的是物理像素（多屏/DPI 异常），至少保证整只在屏幕里
+try {
+  $scrDip = New-Object System.Windows.Point(([System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width / $script:factor), ([System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height / $script:factor))
+  if (($win.Top + $hD) -gt $scrDip.Y) { $win.Top = $scrDip.Y - $hD }
+  if (($win.Left + $wD) -gt $scrDip.X) { $win.Left = $scrDip.X - $wD }
+  if ($win.Top -lt 0) { $win.Top = 0 }
+  if ($win.Left -lt 0) { $win.Left = 0 }
+} catch { }
 
 $script:player = New-Object System.Windows.Media.MediaPlayer
 try { $script:player.Open((New-Object Uri $clickMp3)); $script:player.Volume = 0.35 } catch { }
